@@ -1,9 +1,10 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Drawing;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
+using Microsoft.Xna.Framework;
+using Microsoft.Xna.Framework.Graphics;
 
 namespace BerzerkMaze
 {
@@ -13,7 +14,7 @@ namespace BerzerkMaze
         private readonly int _bricksPerWall;
         private readonly int _wall;
         private readonly Point[] _pillarPoints;
-        private readonly Brush _wallBrush = new SolidBrush(Color.FromArgb(11, 36, 251));
+        private readonly Color _wallColor = new Color(11, 36, 251);
 
         public Renderer()
         {
@@ -32,25 +33,25 @@ namespace BerzerkMaze
             _pillarPoints[7] = new Point(_wall * 4, _wall * 2);
         }
 
-        public void Render(Graphics g, PillarDirection[] directions)
+        public void Render(SpriteBatch spriteBatch, Texture2D pixelTexture, PillarDirection[] directions, Point offset)
         {
             // paredes fixas
             {
                 // superior
-                g.FillRectangle(_wallBrush, 0, 0, _wall * 2, _brick);
-                g.FillRectangle(_wallBrush, _wall * 3, 0, _wall * 2, _brick);
+                FillRectangle(spriteBatch, pixelTexture, offset.X + 0, offset.Y + 0, _wall * 2, _brick);
+                FillRectangle(spriteBatch, pixelTexture, offset.X + _wall * 3, offset.Y + 0, _wall * 2, _brick);
 
                 // inferior
-                g.FillRectangle(_wallBrush, 0, _wall * 3, _wall * 2, _brick);
-                g.FillRectangle(_wallBrush, _wall * 3, _wall * 3, _wall * 2, _brick);
+                FillRectangle(spriteBatch, pixelTexture, offset.X + 0, offset.Y + _wall * 3, _wall * 2, _brick);
+                FillRectangle(spriteBatch, pixelTexture, offset.X + _wall * 3, offset.Y + _wall * 3, _wall * 2, _brick);
 
                 // esquerda
-                g.FillRectangle(_wallBrush, 0, 0, _brick, _wall);
-                g.FillRectangle(_wallBrush, 0, _wall * 2, _brick, _wall);
+                FillRectangle(spriteBatch, pixelTexture, offset.X + 0, offset.Y + 0, _brick, _wall);
+                FillRectangle(spriteBatch, pixelTexture, offset.X + 0, offset.Y + _wall * 2, _brick, _wall);
 
                 // direita
-                g.FillRectangle(_wallBrush, _wall * 5, 0, _brick, _wall);
-                g.FillRectangle(_wallBrush, _wall * 5, _wall * 2, _brick, _wall);
+                FillRectangle(spriteBatch, pixelTexture, offset.X + _wall * 5, offset.Y + 0, _brick, _wall);
+                FillRectangle(spriteBatch, pixelTexture, offset.X + _wall * 5, offset.Y + _wall * 2, _brick, _wall);
             }
 
             // preenche as paredes geradas
@@ -60,19 +61,19 @@ namespace BerzerkMaze
                 switch (directions[i])
                 {
                     case PillarDirection.North:
-                        g.FillRectangle(_wallBrush, p1.X, p1.Y - _wall, _brick, _wall);
+                        FillRectangle(spriteBatch, pixelTexture, offset.X + p1.X, offset.Y + p1.Y - _wall, _brick, _wall);
                         break;
 
                     case PillarDirection.South:
-                        g.FillRectangle(_wallBrush, p1.X, p1.Y, _brick, _wall);
+                        FillRectangle(spriteBatch, pixelTexture, offset.X + p1.X, offset.Y + p1.Y, _brick, _wall);
                         break;
 
                     case PillarDirection.East:
-                        g.FillRectangle(_wallBrush, p1.X, p1.Y, _wall, _brick);
+                        FillRectangle(spriteBatch, pixelTexture, offset.X + p1.X, offset.Y + p1.Y, _wall, _brick);
                         break;
 
                     case PillarDirection.West:
-                        g.FillRectangle(_wallBrush, p1.X - _wall, p1.Y, _wall, _brick);
+                        FillRectangle(spriteBatch, pixelTexture, offset.X + p1.X - _wall, offset.Y + p1.Y, _wall, _brick);
                         break;
 
                     default:
@@ -84,12 +85,17 @@ namespace BerzerkMaze
             {
                 for (int i = 0; i < 8; i++)
                 {
-                    g.FillRectangle(_wallBrush, _pillarPoints[i].X, _pillarPoints[i].Y, _brick, _brick);
+                    FillRectangle(spriteBatch, pixelTexture, offset.X + _pillarPoints[i].X, offset.Y + _pillarPoints[i].Y, _brick, _brick);
                 }
 
-                g.FillRectangle(_wallBrush, _wall * 5, _wall, _brick, _brick);
-                g.FillRectangle(_wallBrush, _wall * 5, _wall * 3, _brick, _brick);
+                FillRectangle(spriteBatch, pixelTexture, offset.X + _wall * 5, offset.Y + _wall, _brick, _brick);
+                FillRectangle(spriteBatch, pixelTexture, offset.X + _wall * 5, offset.Y + _wall * 3, _brick, _brick);
             }
+        }
+
+        private void FillRectangle(SpriteBatch spriteBatch, Texture2D pixelTexture, int x, int y, int width, int height)
+        {
+            spriteBatch.Draw(pixelTexture, new Rectangle(x, y, width, height), _wallColor);
         }
     }
 }
