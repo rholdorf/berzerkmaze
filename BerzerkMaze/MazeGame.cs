@@ -9,19 +9,21 @@ internal class MazeGame : Game
 {
     private const int LOGICAL_WIDTH = MazeLayout.LogicalWidth;
     private const int LOGICAL_HEIGHT = MazeLayout.LogicalHeight;
-    private const int DISPLAY_SCALE = 2;
+    private const int MIN_DISPLAY_SCALE = 1;
+    private const int MAX_DISPLAY_SCALE = 6;
     private GraphicsDeviceManager _graphics;
     private GameEngine _engine;
     private SpriteBatch _spriteBatch;
     private Texture2D _pixelTexture;
     private RenderTarget2D _sceneTarget;
     private KeyboardState _previousKeyboardState;
+    private int _displayScale = 3;
 
     public MazeGame()
     {
         _graphics = new GraphicsDeviceManager(this);
-        _graphics.PreferredBackBufferWidth = LOGICAL_WIDTH * DISPLAY_SCALE;
-        _graphics.PreferredBackBufferHeight = LOGICAL_HEIGHT * DISPLAY_SCALE;
+        _graphics.PreferredBackBufferWidth = LOGICAL_WIDTH * _displayScale;
+        _graphics.PreferredBackBufferHeight = LOGICAL_HEIGHT * _displayScale;
         _graphics.SynchronizeWithVerticalRetrace = true;
         IsFixedTimeStep = true;
         TargetElapsedTime = TimeSpan.FromSeconds(1d / 60d);
@@ -46,7 +48,6 @@ internal class MazeGame : Game
     protected override void Update(GameTime gameTime)
     {
         var keyboardState = Keyboard.GetState();
-        _engine.BeginInputFrame();
             
         if (keyboardState.IsKeyDown(Keys.Escape))
         {
@@ -73,25 +74,22 @@ internal class MazeGame : Game
             _engine.Right();
         }
 
-        if (keyboardState.IsKeyDown(Keys.W))
+        if (IsCommandPressed(keyboardState) && IsAnyNewKeyPress(keyboardState, Keys.OemPlus, Keys.Add))
         {
-            _engine.MovePlayerUp();
+            SetDisplayScale(_displayScale + 1);
         }
 
-        if (keyboardState.IsKeyDown(Keys.S))
+        if (IsCommandPressed(keyboardState) && IsAnyNewKeyPress(keyboardState, Keys.OemMinus, Keys.Subtract))
         {
-            _engine.MovePlayerDown();
+            SetDisplayScale(_displayScale - 1);
         }
 
-        if (keyboardState.IsKeyDown(Keys.A))
-        {
-            _engine.MovePlayerLeft();
-        }
-
-        if (keyboardState.IsKeyDown(Keys.D))
-        {
-            _engine.MovePlayerRight();
-        }
+        _engine.SetPlayerInput(
+            keyboardState.IsKeyDown(Keys.W),
+            keyboardState.IsKeyDown(Keys.S),
+            keyboardState.IsKeyDown(Keys.A),
+            keyboardState.IsKeyDown(Keys.D),
+            keyboardState.IsKeyDown(Keys.Space));
 
         _engine.Update();
         _previousKeyboardState = keyboardState;
@@ -113,7 +111,7 @@ internal class MazeGame : Game
         _spriteBatch.Begin(samplerState: SamplerState.PointClamp);
         _spriteBatch.Draw(
             _sceneTarget,
-            new Rectangle(0, 0, LOGICAL_WIDTH * DISPLAY_SCALE, LOGICAL_HEIGHT * DISPLAY_SCALE),
+            new Rectangle(0, 0, LOGICAL_WIDTH * _displayScale, LOGICAL_HEIGHT * _displayScale),
             Color.White);
         _spriteBatch.End();
 
@@ -152,5 +150,45 @@ internal class MazeGame : Game
     private bool IsNewKeyPress(Keys key, KeyboardState current)
     {
         return current.IsKeyDown(key) && _previousKeyboardState.IsKeyUp(key);
+    }
+
+    private bool IsAnyNewKeyPress(KeyboardState current, params Keys[] keys)
+    {
+        for (var i = 0; i < keys.Length; i++)
+        {
+            if (IsNewKeyPress(keys[i], current))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static bool IsCommandPressed(KeyboardState state)
+    {
+        return state.IsKeyDown(Keys.LeftWindows) || state.IsKeyDown(Keys.RightWindows);
+    }
+
+    private void SetDisplayScale(int newScale)
+    {
+        if (newScale < MIN_DISPLAY_SCALE)
+        {
+            newScale = MIN_DISPLAY_SCALE;
+        }
+        else if (newScale > MAX_DISPLAY_SCALE)
+        {
+            newScale = MAX_DISPLAY_SCALE;
+        }
+
+        if (newScale == _displayScale)
+        {
+            return;
+        }
+
+        _displayScale = newScale;
+        _graphics.PreferredBackBufferWidth = LOGICAL_WIDTH * _displayScale;
+        _graphics.PreferredBackBufferHeight = LOGICAL_HEIGHT * _displayScale;
+        _graphics.ApplyChanges();
     }
 }

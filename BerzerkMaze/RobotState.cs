@@ -12,7 +12,7 @@ internal sealed class RobotState
 {
     public int X { get; set; }
     public int Y { get; set; }
-    public int StandingVariant { get; set; }
+    public int IdleAnimIndex { get; set; }
     public RobotDirection Direction { get; set; }
     public int WalkFrame { get; set; }
     public bool IsMoving { get; set; }

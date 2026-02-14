@@ -6,6 +6,14 @@ namespace BerzerkMaze;
 
 internal class GameEngine
 {
+    private enum PlayerEntrySide
+    {
+        North = 0,
+        South = 1,
+        West = 2,
+        East = 3
+    }
+
     private const int MaxRobots = 8;
     private const int RobotInitialY = 75;
     private const int RobotSourceYMax = 75;
@@ -20,6 +28,7 @@ internal class GameEngine
     [
         0x38, 0x40, 0x50, 0x60, 0x78, 0x90, 0xB0, 0xD0
     ];
+    private static readonly int[] RobotIdleAnimationTable = [1, 2, 3, 4, 5, 6, 7, 8, 0];
 
     private const int RobotPixelScale = 1;
     private const int RobotWidth = 8 * RobotPixelScale;
@@ -30,14 +39,19 @@ internal class GameEngine
 
     private const int PlayerWidth = 8;
     private const int PlayerHeight = 12;
-    private const int PlayerSpeed = 1;
+    private const byte PlayerFractionalDelay = 0x70; // move 7 out of 16 frames (NTSC)
     private const int PlayerRespawnDelayFrames = 40;
+    private const int PlayerMissileSize = 2;
 
     private const int RobotMissileSize = 2;
     private const int RobotMissileAlignX = 8 * RobotPixelScale;
     private const int RobotMissileAlignY = 6 * RobotPixelScale;
     private const int RobotMissileStepX = 2 * RobotPixelScale;
     private const int RobotMissileStepY = 1 * RobotPixelScale;
+    private static readonly sbyte[] VerticalPixelOffsets = [0, -1, 1, 0, 0, -1, 1, 0, 0, -1, 1, 0, 0, 0, 0, 0];
+    private static readonly sbyte[] HorizontalPixelOffsets = [0, 0, 0, 0, -1, -1, -1, -1, 1, 1, 1, 1, 0, 0, 0, 0];
+    private static readonly byte[] InitMissileXOffsetTable = [0, 7, 8, 0, 0, 0, 0, 0, 6, 6, 6];
+    private static readonly byte[] InitMissileYOffsetTable = [0, 2, 7, 0, 5, 5, 7, 0, 5, 5, 7];
 
     private int _roomNumber;
     private int _frameCounter;
@@ -48,6 +62,7 @@ internal class GameEngine
     private readonly List<RobotState> _robots = new(MaxRobots);
     private readonly List<Rectangle> _collisionWalls = new(24);
     private readonly PlayerState _player = new();
+    private readonly PlayerMissileState _playerMissile = new();
     private readonly RobotMissileState _robotMissile = new();
 
     private byte _randomLo;
@@ -55,6 +70,10 @@ internal class GameEngine
     private byte _initRobotDelay;
     private byte _robotMotion;
     private byte _robotMotionDelay;
+    private byte _playerMotion;
+    private byte _playerInputMask;
+    private bool _playerFirePressed;
+    private PlayerEntrySide _nextEntrySide = PlayerEntrySide.West;
 
     public GameEngine()
     {
@@ -64,7 +83,7 @@ internal class GameEngine
 
     public void Render(SpriteBatch spriteBatch, Texture2D pixelTexture, Point offset)
     {
-        _renderer.Render(spriteBatch, pixelTexture, _directions, _robots, _player, _robotMissile, offset);
+        _renderer.Render(spriteBatch, pixelTexture, _directions, _robots, _player, _playerMissile, _robotMissile, offset);
     }
 
     public void Update()
@@ -74,6 +93,8 @@ internal class GameEngine
         UpdateDyingRobots();
         SortRobotsByVerticalPosition();
         UpdatePlayerState();
+        UpdatePlayerMovement();
+        UpdatePlayerMissile();
         CheckPlayerRobotCollision();
 
         if (_initRobotDelay != byte.MaxValue)
@@ -95,41 +116,63 @@ internal class GameEngine
 
                 UpdateRobot(i);
             }
+            UpdateIdleRobotAnimation();
         }
 
         UpdateRobotMissile();
     }
 
-    public void MovePlayerUp() => TryMovePlayer(0, -PlayerSpeed);
-    public void MovePlayerDown() => TryMovePlayer(0, PlayerSpeed);
-    public void MovePlayerLeft() => TryMovePlayer(-PlayerSpeed, 0);
-    public void MovePlayerRight() => TryMovePlayer(PlayerSpeed, 0);
-    public void BeginInputFrame()
+    public void SetPlayerInput(bool up, bool down, bool left, bool right, bool firePressed)
     {
-        _player.IsMoving = false;
+        _playerInputMask = 0;
+        if (up)
+        {
+            _playerInputMask |= 0x01;
+        }
+
+        if (down)
+        {
+            _playerInputMask |= 0x02;
+        }
+
+        if (left)
+        {
+            _playerInputMask |= 0x04;
+        }
+
+        if (right)
+        {
+            _playerInputMask |= 0x08;
+        }
+
+        _playerFirePressed = firePressed;
     }
 
     public void Up()
     {
         _roomNumber -= 32;
+        _nextEntrySide = PlayerEntrySide.South;
         NextRoom();
     }
 
     public void Left()
     {
         _roomNumber--;
+        _nextEntrySide = PlayerEntrySide.East;
         NextRoom();
     }
 
     public void Right()
     {
         _roomNumber++;
+        _nextEntrySide = PlayerEntrySide.West;
         NextRoom();
     }
 
     public void Down()
     {
         _roomNumber += 32;
+        _nextEntrySide = PlayerEntrySide.North;
         NextRoom();
     }
 
@@ -145,6 +188,7 @@ internal class GameEngine
         BuildCollisionWalls();
         ResetPlayerForRoom();
         SpawnRobotsForRoom();
+        DeactivatePlayerMissile();
         DeactivateRobotMissile();
     }
 
@@ -166,7 +210,7 @@ internal class GameEngine
             {
                 X = mappedX,
                 Y = mappedY,
-                StandingVariant = animationIndex,
+                IdleAnimIndex = animationIndex,
                 Direction = (RobotDirection)(NextRandom() & 0x03),
                 WalkFrame = 0,
                 IsMoving = false,
@@ -459,7 +503,6 @@ internal class GameEngine
 
             if (missileRect.Intersects(GetRobotBounds(_robots[i])))
             {
-                StartExplosion(i);
                 DeactivateRobotMissile();
                 return;
             }
@@ -483,10 +526,41 @@ internal class GameEngine
 
     private void ResetPlayerForRoom()
     {
-        _player.X = MazeLayout.LogicalWidth / 2 - PlayerWidth / 2;
-        _player.Y = MazeLayout.PlayfieldTop + MazeLayout.PlayfieldHeight / 2 - PlayerHeight / 2;
+        var centerX = MazeLayout.RoomOriginX + MazeLayout.RoomWidth / 2 - PlayerWidth / 2;
+        var centerY = MazeLayout.RoomOriginY + MazeLayout.RoomHeight / 2 - (PlayerHeight + 2);
+        var leftX = MazeLayout.RoomOriginX + 6;
+        var rightX = MazeLayout.RoomOriginX + MazeLayout.RoomWidth - (PlayerWidth + 7);
+        var topY = MazeLayout.RoomOriginY + 8;
+        var bottomY = MazeLayout.RoomOriginY + MazeLayout.RoomHeight - (PlayerHeight + 8);
+
+        switch (_nextEntrySide)
+        {
+            case PlayerEntrySide.North:
+                _player.X = centerX;
+                _player.Y = topY;
+                _player.FacingMask = 0x02;
+                break;
+            case PlayerEntrySide.South:
+                _player.X = centerX;
+                _player.Y = bottomY;
+                _player.FacingMask = 0x01;
+                break;
+            case PlayerEntrySide.East:
+                _player.X = rightX;
+                _player.Y = centerY;
+                _player.FacingMask = 0x04;
+                break;
+            default:
+                _player.X = leftX;
+                _player.Y = centerY;
+                _player.FacingMask = 0x08;
+                break;
+        }
+
         _player.IsDying = false;
         _player.RespawnTimer = 0;
+        _player.IsMoving = false;
+        _playerMotion = 0;
 
         for (var attempt = 0; attempt < 32; attempt++)
         {
@@ -495,25 +569,7 @@ internal class GameEngine
                 return;
             }
 
-            _player.Y -= 1;
-        }
-    }
-
-    private void TryMovePlayer(int dx, int dy)
-    {
-        if (_player.IsDying)
-        {
-            return;
-        }
-
-        var nextX = _player.X + dx;
-        var nextY = _player.Y + dy;
-        if (CanPlayerOccupy(nextX, nextY))
-        {
-            _player.X = nextX;
-            _player.Y = nextY;
-            _player.IsMoving = true;
-            _player.WalkFrame ^= 1;
+            _player.Y += 1;
         }
     }
 
@@ -526,6 +582,74 @@ internal class GameEngine
 
         var playerRect = new Rectangle(x, y, PlayerWidth, PlayerHeight);
         return !CollidesWithWall(playerRect);
+    }
+
+    private void UpdatePlayerMovement()
+    {
+        _player.IsMoving = false;
+        if (_player.IsDying)
+        {
+            return;
+        }
+
+        if (_playerFirePressed)
+        {
+            TryLaunchPlayerMissile();
+            _playerMotion = 0;
+            return;
+        }
+
+        if (_playerInputMask == 0)
+        {
+            _playerMotion = 0;
+            return;
+        }
+
+        _playerMotion = AddByteWithCarry(_playerMotion, PlayerFractionalDelay, out var shouldMove);
+        if (!shouldMove)
+        {
+            return;
+        }
+
+        var dx = HorizontalPixelOffsets[_playerInputMask];
+        var dy = VerticalPixelOffsets[_playerInputMask];
+        if (dx == 0 && dy == 0)
+        {
+            return;
+        }
+
+        var nextX = _player.X + dx;
+        var nextY = _player.Y + dy;
+        if (!CanPlayerOccupy(nextX, nextY))
+        {
+            return;
+        }
+
+        _player.X = nextX;
+        _player.Y = nextY;
+        _player.IsMoving = true;
+        _player.WalkFrame ^= 1;
+        _player.FacingMask = _playerInputMask;
+    }
+
+    private void TryLaunchPlayerMissile()
+    {
+        if (_playerMissile.Active)
+        {
+            return;
+        }
+
+        _playerMissile.Active = true;
+        _playerMissile.DirectionMask = _player.FacingMask;
+        _playerMissile.DelayAccumulator = 0;
+        var dir = _playerMissile.DirectionMask;
+        if (dir >= InitMissileXOffsetTable.Length)
+        {
+            dir = 0x08;
+        }
+
+        _playerMissile.X = _player.X + InitMissileXOffsetTable[dir];
+        _playerMissile.Y = _player.Y + InitMissileYOffsetTable[dir];
     }
 
     private void SeedRandomForRoom(int roomNumber)
@@ -802,6 +926,102 @@ internal class GameEngine
         return innerTop + (sourceY * (innerHeight - RobotHeight)) / RobotSourceYMax;
     }
 
+    private void UpdateIdleRobotAnimation()
+    {
+        for (var i = 0; i < _robots.Count; i++)
+        {
+            var robot = _robots[i];
+            if (robot.IsDying || robot.IsMoving)
+            {
+                continue;
+            }
+
+            var index = robot.IdleAnimIndex;
+            if (index < 0 || index >= RobotIdleAnimationTable.Length)
+            {
+                index = 0;
+            }
+
+            robot.IdleAnimIndex = RobotIdleAnimationTable[index];
+        }
+    }
+
+    private void UpdatePlayerMissile()
+    {
+        if (!_playerMissile.Active)
+        {
+            return;
+        }
+
+        var dir = _playerMissile.DirectionMask;
+        if (dir >= VerticalPixelOffsets.Length)
+        {
+            DeactivatePlayerMissile();
+            return;
+        }
+
+        var vy = VerticalPixelOffsets[dir];
+        var vx = HorizontalPixelOffsets[dir];
+        _playerMissile.Y += vy;
+        _playerMissile.X += vx * 2;
+
+        CheckPlayerMissileCollisions();
+    }
+
+    private void CheckPlayerMissileCollisions()
+    {
+        if (!_playerMissile.Active)
+        {
+            return;
+        }
+
+        var missileRect = new Rectangle(_playerMissile.X, _playerMissile.Y, PlayerMissileSize, PlayerMissileSize);
+        if (_playerMissile.X <= 0 || _playerMissile.X >= MazeLayout.LogicalWidth - PlayerMissileSize ||
+            _playerMissile.Y <= 0 || _playerMissile.Y >= MazeLayout.LogicalHeight - PlayerMissileSize)
+        {
+            DeactivatePlayerMissile();
+            return;
+        }
+
+        if (CollidesWithWall(missileRect))
+        {
+            DeactivatePlayerMissile();
+            return;
+        }
+
+        for (var i = 0; i < _robots.Count; i++)
+        {
+            if (_robots[i].IsDying)
+            {
+                continue;
+            }
+
+            if (missileRect.Intersects(GetRobotBounds(_robots[i])))
+            {
+                StartExplosion(i);
+                DeactivatePlayerMissile();
+                return;
+            }
+        }
+
+        if (_robotMissile.Active)
+        {
+            var robotMissileRect = new Rectangle(_robotMissile.X, _robotMissile.Y, RobotMissileSize, RobotMissileSize);
+            if (missileRect.Intersects(robotMissileRect))
+            {
+                DeactivatePlayerMissile();
+                DeactivateRobotMissile();
+            }
+        }
+    }
+
+    private void DeactivatePlayerMissile()
+    {
+        _playerMissile.Active = false;
+        _playerMissile.DirectionMask = 0;
+        _playerMissile.DelayAccumulator = 0;
+    }
+
     private void CheckPlayerRobotCollision()
     {
         if (_player.IsDying)
@@ -835,6 +1055,7 @@ internal class GameEngine
         _player.IsDying = true;
         _player.IsMoving = false;
         _player.RespawnTimer = PlayerRespawnDelayFrames;
+        DeactivatePlayerMissile();
     }
 
     private void UpdatePlayerState()

@@ -10,6 +10,7 @@ internal class Renderer
     private readonly Color _wallColor = new(11, 36, 251);
     private readonly Color _robotColor = new(245, 245, 84);
     private readonly Color _playerColor = new(80, 255, 120);
+    private readonly Color _playerMissileColor = new(120, 255, 255);
     private readonly Color _robotMissileColor = new(255, 80, 80);
     private const int ROBOT_PIXEL_SCALE = 1;
     private const int ROBOT_WIDTH = 8;
@@ -74,7 +75,7 @@ internal class Renderer
         0x3C, 0x24, 0x24, 0x3C, 0xC3, 0xA5, 0xA5, 0xE7, 0x26, 0x22, 0x2E, 0x38
     ];
 
-    public void Render(SpriteBatch spriteBatch, Texture2D pixelTexture, PillarDirection[] directions, IReadOnlyList<RobotState> robots, PlayerState player, RobotMissileState robotMissile, Point offset)
+    public void Render(SpriteBatch spriteBatch, Texture2D pixelTexture, PillarDirection[] directions, IReadOnlyList<RobotState> robots, PlayerState player, PlayerMissileState playerMissile, RobotMissileState robotMissile, Point offset)
     {
         // paredes fixas
         {
@@ -135,6 +136,7 @@ internal class Renderer
 
         RenderRobots(spriteBatch, pixelTexture, robots, offset);
         RenderPlayer(spriteBatch, pixelTexture, player, offset);
+        RenderPlayerMissile(spriteBatch, pixelTexture, playerMissile, offset);
         RenderRobotMissile(spriteBatch, pixelTexture, robotMissile, offset);
     }
 
@@ -168,7 +170,13 @@ internal class Renderer
 
         if (!robot.IsMoving)
         {
-            return StandingAnimations[robot.StandingVariant % StandingAnimations.Length];
+            var standingIndex = robot.IdleAnimIndex;
+            if (standingIndex == 8)
+            {
+                standingIndex = 0;
+            }
+
+            return StandingAnimations[standingIndex % StandingAnimations.Length];
         }
 
         var walkFrame = robot.WalkFrame & 0x01;
@@ -228,7 +236,17 @@ internal class Renderer
             return;
         }
 
-        FillRectangle(spriteBatch, pixelTexture, offset.X + robotMissile.X, offset.Y + robotMissile.Y, 4, 4, _robotMissileColor);
+        FillRectangle(spriteBatch, pixelTexture, offset.X + robotMissile.X, offset.Y + robotMissile.Y, 2, 2, _robotMissileColor);
+    }
+
+    private void RenderPlayerMissile(SpriteBatch spriteBatch, Texture2D pixelTexture, PlayerMissileState playerMissile, Point offset)
+    {
+        if (!playerMissile.Active)
+        {
+            return;
+        }
+
+        FillRectangle(spriteBatch, pixelTexture, offset.X + playerMissile.X, offset.Y + playerMissile.Y, 2, 2, _playerMissileColor);
     }
 
     private void FillRectangle(SpriteBatch spriteBatch, Texture2D pixelTexture, int x, int y, int width, int height)
