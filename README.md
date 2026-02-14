@@ -2,6 +2,8 @@
 
 A small maze generator/renderer inspired by the BERZERK room-generation algorithm.
 
+![screenshot](screenshot.png)
+
 ## Features
 
 - Deterministic room generation based on BERZERK by Dan HitchensBerzerk - (c) 1982 Atari, Inc
