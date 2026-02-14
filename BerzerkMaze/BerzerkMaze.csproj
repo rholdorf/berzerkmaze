@@ -11,12 +11,5 @@
 
   <ItemGroup>
     <PackageReference Include="MonoGame.Framework.DesktopGL" Version="3.8.4.1" />
-    <PackageReference Include="System.Configuration.ConfigurationManager" Version="10.0.0" />
-  </ItemGroup>
-
-  <ItemGroup>
-    <Compile Remove="Form1.cs" />
-    <Compile Remove="Form1.Designer.cs" />
-    <EmbeddedResource Remove="Form1.resx" />
   </ItemGroup>
 </Project>
