@@ -1,15 +1,10 @@
-﻿using System;
+﻿namespace BerzerkMaze;
 
-namespace BerzerkMaze
+internal static class Program
 {
-    static class Program
+    private static void Main()
     {
-        static void Main()
-        {
-            using (var game = new MazeGame())
-            {
-                game.Run();
-            }
-        }
+        using var game = new MazeGame();
+        game.Run();
     }
 }
